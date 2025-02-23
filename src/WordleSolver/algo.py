@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Type, Callable
+from typing import Tuple, Type
 from WordleSolver.data_structures import SolverData, RuntimeData
 import random
 import os
 import re
 from WordleSolver.display import Display, Console, MPL
+from WordleSolver.utils import WordVector
 from time import sleep
 
 
@@ -50,6 +51,7 @@ class Context:  # TODO
         ]
 
         for i in range(data.case_size):
+
             board: dict[str, Tuple[int, ...]] = {}
             attempts: int = 0
             is_success: bool = False
@@ -79,7 +81,6 @@ class Context:  # TODO
                     attempts = 7
                     is_success = False
                     break
-                
 
             # Update data.
             run_data.shots.append(attempts)
@@ -91,12 +92,12 @@ class Context:  # TODO
                 run_data.failures += 1
 
             DISPLAY.display(run_data, board, case_data[i])
-            
+
             # Wait interval (Convert milliseconds to seconds).
             sleep(data.update_interval / 1000)
 
 
-class Evaluation(ABC): 
+class Evaluation(ABC):
     @abstractmethod
     def guess(
         self: "Evaluation",
@@ -130,7 +131,6 @@ class User(Evaluation):  # TODO
                 continue
             elif user_input.lower() in [g[0] for g in guesses] or len(user_input) == 5:
                 return user_input.lower()
-                
 
     def evaluate(
         self: "Evaluation",
@@ -153,7 +153,6 @@ class User(Evaluation):  # TODO
                 break
 
 
-
 class Auto(Evaluation):  # TODO
     def guess(
         self: "Evaluation",
@@ -161,6 +160,7 @@ class Auto(Evaluation):  # TODO
     ) -> str:
         return random.choice(guesses)[0]
 
+    # TODO: Implement position-awareness
     def evaluate(
         self: "Evaluation",
         board: dict[str, Tuple[int, ...]],
@@ -169,8 +169,17 @@ class Auto(Evaluation):  # TODO
         for entry in board.keys():
             if board[entry] == (-2, -2, -2, -2, -2):
                 evaluation: list[int] = [-2, -2, -2, -2, -2]
+                answer_count: Tuple[int, ...] = WordVector(answer).get_vector()
+                seen: dict[str, int] = {}
                 for i, ch in enumerate(entry):
-                    if ch not in answer:
+                    if ch not in seen:
+                        seen[ch] = 1
+                    else:
+                        seen[ch] += 1
+                    if (
+                        ch not in answer
+                        or answer_count[WordVector.map_to_num[ch]] < seen[ch]
+                    ):
                         evaluation[i] = -1
                     elif ch in answer and answer[i] != ch:
                         evaluation[i] = 0
@@ -180,7 +189,7 @@ class Auto(Evaluation):  # TODO
                 break
 
 
-class Algorithm(ABC):  # TODO
+class Algorithm(ABC):
     @abstractmethod
     def predict(
         self: "Algorithm", data: SolverData, board: dict[str, Tuple[int, ...]]
@@ -209,46 +218,8 @@ class RandomFiltered(Algorithm):
         self: "RandomFiltered", data: SolverData, board: dict[str, Tuple[int, ...]]
     ) -> Tuple[Tuple[str, float], ...]:
 
-        feedback: dict[str, dict[str, int]] = {
-            v: {} for v in ("absent", "present", "correct")
-        }
-        for guess in board:
-            for i, value in enumerate(board[guess]):
-                if value == -1 and guess[i]:
-                    feedback["absent"][guess[i]] = i
-                elif value == 0:
-                    feedback["present"][guess[i]] = i
-                else:
-                    if guess[i] in feedback["present"]:
-                        del feedback["present"][guess[i]]
-                    feedback["correct"][guess[i]] = i
-
-        filtered_words: set = set()
-
-        # Apply feedback (ABSENT).
-        for word in data.considered_words:
-            is_valid_word: bool = True
-            for ltr in word:
-                if ltr in feedback["absent"]:
-                    is_valid_word = False
-                    break
-            if is_valid_word:
-                for ltr_x in feedback["present"]:
-                    if ltr_x not in word:
-                        is_valid_word = False
-                        break
-            if is_valid_word:
-                for ltr_y in feedback["correct"]:
-                    if word[feedback["correct"][ltr_y]] != ltr_y:
-                        is_valid_word = False
-                        break
-            if is_valid_word:
-                filtered_words.add(word)
-
-        guesses: set = filtered_words
-        return tuple([(g, 1 / len(filtered_words)) for g in guesses])
-
-
+         # Broken.
+        pass
 class LetterFrequency(Algorithm):  # TODO
     def predict(
         self: "LetterFrequency", data: SolverData, board: dict[str, Tuple[int, ...]]
