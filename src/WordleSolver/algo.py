@@ -1,6 +1,6 @@
-import random
 import os
 import re
+import random
 from abc import ABC, abstractmethod
 from typing import Tuple, Type, Dict, Set, List
 from WordleSolver.data_structures import SolverData, RuntimeData

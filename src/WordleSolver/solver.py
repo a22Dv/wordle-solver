@@ -1,5 +1,6 @@
 import os
 import sys
+from importlib.resources import files
 from typing import Tuple, Type
 from WordleSolver.initialize import WordData
 from WordleSolver.data_structures import SolverData, InitData, InputData
@@ -12,7 +13,7 @@ class Solver:
         """Initialization."""
         self.init_data: InitData = InitData(
             os.path.dirname(sys.argv[0]),
-            os.path.join(os.path.dirname(sys.argv[0]), "_internal", "data"),
+            files("WordleSolver") / "data"
         )
         self.solver_data = self._get_solver_data()
         self.context = context
@@ -20,7 +21,7 @@ class Solver:
     def _get_solver_data(self: "Solver") -> SolverData:
         """Helper method to get solver data."""
         considered_words: Tuple[str, ...] = WordData.get_words(self.init_data)
-        freq_threshold: float = 5e-7
+        freq_threshold: float = Input.get_threshold()
 
         final_word_list: list[str] = []
         final_word_freq: dict[str, float] = {}

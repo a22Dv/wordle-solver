@@ -5,7 +5,7 @@ a = Analysis(
     ['src\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\Repositories\wordle-solver\_internal\data', 'data')],
+    datas=[('src/WordleSolver/data', 'WordleSolver/data'), ('venv\Lib\site-packages\wordfreq\data', 'wordfreq\data')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='WordleSolver',
+    name='Wordle Solver',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -32,6 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='public\program_icon.png'
 )
 coll = COLLECT(
     exe,

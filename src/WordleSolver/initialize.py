@@ -1,8 +1,8 @@
-import random
+import os
+import wordfreq
 from typing import Tuple
 from WordleSolver.data_structures import InitData
-import wordfreq
-import os
+
 
 
 class WordData:
@@ -20,3 +20,4 @@ class WordData:
     def get_freqs(words: Tuple[str, ...]) -> dict[str, float]:
         """Returns a dictionary for a given set of words as keys to their frequency values."""
         return {word: wordfreq.word_frequency(word, "en") for word in words}
+
