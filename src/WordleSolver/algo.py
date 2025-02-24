@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
-from typing import Tuple, Type
-from WordleSolver.data_structures import SolverData, RuntimeData
 import random
 import os
 import re
+from abc import ABC, abstractmethod
+from typing import Tuple, Type, Dict, Set, List
+from WordleSolver.data_structures import SolverData, RuntimeData
 from WordleSolver.display import Display, Console, MPL
-from WordleSolver.utils import WordVector
+from WordleSolver.utils import EntropyCalc, WordVector
+from itertools import product
 from time import sleep
 
 
@@ -14,10 +15,7 @@ class Context:  # TODO
         return {
             "Random": Random,
             "Random Filtered": RandomFiltered,
-            "Letter Frequency": LetterFrequency,
-            "Word Frequency": WordFrequency,
             "Entropy": Entropy,
-            "Hybrid": Hybrid,
         }
 
     def get_modes(
@@ -62,7 +60,13 @@ class Context:  # TODO
 
                 # Set guess (Auto/User Input).
                 # -2 = empty, -1 = absent, 0 = present, 1 = correct
-                board[EVALUATION.guess(guesses)] = (-2, -2, -2, -2, -2)
+                board[EVALUATION.guess(guesses, type(ALGORITHM) == Entropy)] = (
+                    -2,
+                    -2,
+                    -2,
+                    -2,
+                    -2,
+                )
 
                 # Get feedback/evaluation of move. (Auto/User Eval)
                 EVALUATION.evaluate(board, case_data[i])
@@ -100,8 +104,7 @@ class Context:  # TODO
 class Evaluation(ABC):
     @abstractmethod
     def guess(
-        self: "Evaluation",
-        guesses: Tuple[Tuple[str, float], ...],
+        self: "Evaluation", guesses: Tuple[Tuple[str, float], ...], is_entropy: bool
     ) -> str:
         """Sets the final guess to the board."""
         pass
@@ -118,14 +121,14 @@ class Evaluation(ABC):
 
 class User(Evaluation):  # TODO
     def guess(
-        self: "Evaluation",
-        guesses: Tuple[Tuple[str, float], ...],
+        self: "Evaluation", guesses: Tuple[Tuple[str, float], ...], is_entropy: bool
     ) -> str:
         while True:
             os.system("cls")
             for guess in guesses[0:20]:
-                print(f"{guess[0]} => {(guess[1] * 100):.3f}%")
-
+                print(
+                    f"{guess[0]} => {f"{f"{(guess[1] * 100):.3f}"}%" if not is_entropy else f"{guess[1]:.3f} B"}"
+                )
             user_input: str = input("\nEnter your guess: ").lower()
             if not user_input.isalpha():
                 continue
@@ -155,38 +158,40 @@ class User(Evaluation):  # TODO
 
 class Auto(Evaluation):  # TODO
     def guess(
-        self: "Evaluation",
-        guesses: Tuple[Tuple[str, float], ...],
+        self: "Evaluation", guesses: Tuple[Tuple[str, float], ...], is_entropy: bool
     ) -> str:
-        return random.choice(guesses)[0]
+        if not is_entropy:
+            return random.choice(guesses)[0]
+        else:
+            return guesses[0][0]
 
-    # TODO: Implement position-awareness
     def evaluate(
         self: "Evaluation",
         board: dict[str, Tuple[int, ...]],
         answer: str,
     ) -> None:
+        answer_count: WordVector = WordVector(answer)
         for entry in board.keys():
             if board[entry] == (-2, -2, -2, -2, -2):
                 evaluation: list[int] = [-2, -2, -2, -2, -2]
-                answer_count: Tuple[int, ...] = WordVector(answer).get_vector()
-                seen: dict[str, int] = {}
-                for i, ch in enumerate(entry):
-                    if ch not in seen:
-                        seen[ch] = 1
+                seen: Dict[str, int] = {}
+                for i, chr in enumerate(entry):
+                    if chr not in seen:
+                        seen[chr] = 1
                     else:
-                        seen[ch] += 1
-                    if (
-                        ch not in answer
-                        or answer_count[WordVector.map_to_num[ch]] < seen[ch]
-                    ):
-                        evaluation[i] = -1
-                    elif ch in answer and answer[i] != ch:
+                        seen[chr] += 1
+
+                    within_count: bool = (
+                        seen[chr]
+                        <= answer_count.get_vector()[WordVector.map_to_num[chr]]
+                    )
+                    if within_count and chr == answer[i]:
+                        evaluation[i] = 1
+                    elif within_count and chr in answer and chr != answer[i]:
                         evaluation[i] = 0
                     else:
-                        evaluation[i] = 1
+                        evaluation[i] = -1
                 board[entry] = tuple(evaluation)
-                break
 
 
 class Algorithm(ABC):
@@ -202,7 +207,7 @@ class Random(Algorithm):
     def predict(
         self: "Random", data: SolverData, board: dict[str, Tuple[int, ...]]
     ) -> Tuple[Tuple[str, float], ...]:
-        # Does not use board as it is pure random.
+        # Does not use feedback as it is pure random.
 
         WORD_LIST: tuple[str, ...] = data.considered_words
         guesses: set = set()
@@ -217,36 +222,89 @@ class RandomFiltered(Algorithm):
     def predict(
         self: "RandomFiltered", data: SolverData, board: dict[str, Tuple[int, ...]]
     ) -> Tuple[Tuple[str, float], ...]:
+        WORD_LIST: tuple[str, ...] = data.considered_words
+        summed_feedback: Dict[str, Dict[str, Set[int] | int]] = {
+            k: {}
+            for k in ("absent", "excluded", "min_counted", "max_counted", "correct")
+        }
+        col_guess: List[str] = [
+            "".join([guess[i] for guess in board]) for i in range(5)
+        ]
+        col_fdbk: List[List[int]] = [
+            [fdbk[i] for fdbk in board.values()] for i in range(5)
+        ]
+        for col, guess, fdbk in zip(range(5), col_guess, col_fdbk):
+            for row, ltr, f_ltr in zip(range(6), guess, fdbk):
+                if f_ltr == 1:
+                    if ltr not in summed_feedback["correct"]:
+                        summed_feedback["correct"][ltr] = set()
+                    summed_feedback["correct"][ltr].add(col)
+                elif f_ltr == 0:
+                    if ltr not in summed_feedback["excluded"]:
+                        summed_feedback["excluded"][ltr] = set()
+                    summed_feedback["excluded"][ltr].add(col)
+                elif (
+                    f_ltr == -1
+                    and ltr not in summed_feedback["correct"]
+                    and ltr not in summed_feedback["excluded"]
+                ):
+                    if ltr not in summed_feedback["absent"]:
+                        summed_feedback["absent"][ltr] = set()
+                    summed_feedback["absent"][ltr].add(col)
 
-         # Broken.
-        pass
-class LetterFrequency(Algorithm):  # TODO
-    def predict(
-        self: "LetterFrequency", data: SolverData, board: dict[str, Tuple[int, ...]]
-    ) -> Tuple[Tuple[str, float], ...]:
+        filtered_words: set = set()
+        for word in WORD_LIST:
+            is_v: bool = True
+            for ltr in summed_feedback["absent"]:  # Gray check for absence.
+                if ltr in word:
+                    is_v = False
+                    break
+            if is_v:
+                for ltr in summed_feedback["excluded"]:  # Yellow check for prescence.
+                    if ltr not in word:
+                        is_v = False
+                        break
+            if is_v:
+                for ltr in summed_feedback[
+                    "excluded"
+                ]:  # Yellow check for position exclusion.
+                    if any([word[i] == ltr for i in summed_feedback["excluded"][ltr]]):
+                        is_v = False
+                        break
+            if is_v:
+                for ltr in summed_feedback["correct"]:  # Green check for correctness.
+                    if not all(
+                        [word[i] == ltr for i in summed_feedback["correct"][ltr]]
+                    ):
+                        is_v = False
+                        break
+            if is_v:
+                filtered_words.add(word)
+        return tuple([(g, 1 / len(filtered_words)) for g in filtered_words])
 
-        pass
 
-
-class WordFrequency(Algorithm):  # TODO
-    def predict(
-        self: "WordFrequency", data: SolverData, board: dict[str, Tuple[int, ...]]
-    ) -> Tuple[Tuple[str, float], ...]:
-
-        pass
-
-
-class Entropy(Algorithm):  # TODO
+class Entropy(Algorithm):
     def predict(
         self: "Entropy", data: SolverData, board: dict[str, Tuple[int, ...]]
     ) -> Tuple[Tuple[str, float], ...]:
+        auto_instance: Auto = Auto()
+        rand_f_instance: RandomFiltered = RandomFiltered()
 
-        pass
+        VALID_GUESSES: Tuple[str, ...] = tuple(
+            [g[0] for g in rand_f_instance.predict(data, board)]
+        )
+        guess_entropies: dict[str, float] = {}
+        patterns: Tuple[Tuple[int, ...], ...] = tuple(
+            [tuple(p) for p in product((-1, 0, 1), repeat=5)]
+        )
 
+        if 0 < len(board):
+            for guess in VALID_GUESSES:
+                entropy: float = EntropyCalc.get_entropy(
+                    VALID_GUESSES, guess, patterns, auto_instance
+                )
+                guess_entropies[guess] = entropy
 
-class Hybrid(Algorithm):  # TODO
-    def predict(
-        self: "Hybrid", data: SolverData, board: dict[str, Tuple[int, ...]]
-    ) -> Tuple[Tuple[str, float], ...]:
-
-        pass
+            return tuple([g for g in sorted(guess_entropies.items(), key=lambda t: t[1], reverse=True)[:10]])
+        else:
+            return tuple([(random.choice(("slate", "crane", "salet")), 1)])

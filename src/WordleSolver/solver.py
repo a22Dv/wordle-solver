@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Tuple, Type, Callable
+from typing import Tuple, Type
 from WordleSolver.initialize import WordData
 from WordleSolver.data_structures import SolverData, InitData, InputData
 from WordleSolver.algo import Context, Algorithm
@@ -20,8 +20,18 @@ class Solver:
     def _get_solver_data(self: "Solver") -> SolverData:
         """Helper method to get solver data."""
         considered_words: Tuple[str, ...] = WordData.get_words(self.init_data)
+        freq_threshold: float = 5e-7
+
+        final_word_list: list[str] = []
+        final_word_freq: dict[str, float] = {}
+        for word, freq in zip(
+            considered_words, WordData.get_freqs(considered_words).values()
+        ):
+            if freq_threshold < freq:
+                final_word_list.append(word)
+                final_word_freq[word] = freq
         solver_data: SolverData = SolverData(
-            considered_words, WordData.get_freqs(considered_words), 0.0, 1
+            tuple(final_word_list), final_word_freq, 0.0, 1
         )
         return solver_data
 
