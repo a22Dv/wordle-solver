@@ -71,11 +71,16 @@ To run the Wordle Solver, just extract the `.zip` file under the `Releases` sect
     ![alt](public/test_case.png)
 
 * `Random` - Pure random.
-![alt](public/randalgo.png)
+
+    ![alt](public/randalgo.png)
+
 * `Random Filtered` - Random, but incorporates feedback gained from the puzzle. 
-![alt](public/randfalgo.png)
+
+    ![alt](public/randfalgo.png)
+
 * `Entropy` - Uses information theory and "entropy" to determine the guess that would minimize the entropy the most, maximizing the `bits` of information gained per guess.
-![alt](public/entropalgo.png)
+
+    ![alt](public/entropalgo.png)
 
 ### Real-time
 *  Depending on your initial algorithm, you'll be shown a list of 10 or 20 possible answers.
